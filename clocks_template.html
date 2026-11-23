@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lamport Logical Clocks — Interactive Teaching Demo</title>
+<style>
+:root{font-family:Inter,system-ui,Segoe UI,sans-serif;color:#20384d;background:#eef4f8}*{box-sizing:border-box}body{margin:0}
+header{background:#123b5d;padding:22px 26px;color:white}header h1{font-size:25px;margin:0}header p{font-size:13px;color:#c4dceb;margin:6px 0 0}
+main{max-width:1060px;margin:25px auto;padding:0 20px}section,.controls{background:white;border:1px solid #dbe4ec;border-radius:12px;padding:17px;margin-bottom:14px;box-shadow:0 4px 12px #17344b0d}
+.controls{display:flex;align-items:center;gap:15px;flex-wrap:wrap}button{border:0;background:#156da8;color:white;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:bold}select{background:white;border:1px solid #b8cbd8;border-radius:8px;padding:10px;font:inherit}
+input[type=range]{flex:1;min-width:170px;accent-color:#1775ba}#time{font-weight:700;color:#145a8c;font-variant-numeric:tabular-nums}
+.clocks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.clock{background:#eaf3fb;border:1px solid #c8dce9;padding:15px;border-radius:10px;text-align:center}.clock .value{font-size:38px;color:#1764a1;font-weight:800}.clock strong{font-size:15px}
+h2{font-size:18px;margin:3px 0 13px}#table{border-collapse:collapse;width:100%;font-size:13px}#table th,#table td{border-bottom:1px solid #e2e9ef;padding:9px;text-align:left}#table th{background:#eff5fa;color:#38546c}#table tr.active{background:#ddf3e7;font-weight:700}#table tr.future{opacity:.35}
+.hint{font-size:12px;color:#677e91;margin:8px 0 0}.rule{display:flex;flex-wrap:wrap;gap:12px;font-size:14px}.rule span{background:#eef5fc;border-radius:8px;padding:9px 14px;color:#1c587a}
+@media(max-width:550px){.clocks{grid-template-columns:1fr}#table{font-size:11px}}
+</style></head><body>
+<header><h1>Lamport Logical Clocks</h1><p>Part F · Local events, message sends, receive timestamps, and causality</p></header>
+<main>
+<div class="controls"><select id="case"></select><button id="play">▶ Play</button><button id="restart">↺ Reset</button><input id="step" type="range" min="0" max="10" value="0"><strong id="time">0.0 s</strong></div>
+<section><h2>Independent node clocks</h2><div class="clocks" id="clocks"></div><p class="hint">Each node has its own logical clock; there is no shared clock variable.</p></section>
+<section><h2>Ordered execution history</h2><table id="table"><thead><tr><th>Simulated time</th><th>Node</th><th>Action</th><th>Related node</th><th>Lamport value</th></tr></thead><tbody id="rows"></tbody></table><p class="hint">The highlighted row is the latest action. Messages with matching IDs form a send/receive pair.</p></section>
+<section><h2>Rules to remember</h2><div class="rule"><span>Local event or send: <strong>L = L + 1</strong></span><span>Receive message with T: <strong>L = max(L, T) + 1</strong></span></div><p class="hint">If A causally precedes B, then L(A) &lt; L(B). The converse need not be true. Lamport timestamps do not by themselves establish concurrency or consensus.</p></section>
+</main><script>
+const DATA=__CLOCK_DATA__, $=x=>document.getElementById(x);let run=DATA.runs[0],step=-1,timer=null;
+DATA.runs.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r.name;$('case').appendChild(o)});
+function setCase(){stop();run=DATA.runs[Number($('case').value)];step=-1;$('step').max=run.events.length;$('step').value=0;draw()}
+function draw(){const snap=step>=0?run.timeline[step].clocks:{N0:0,N1:0,N2:0};$('clocks').innerHTML=Object.entries(snap).map(([name,value])=>`<div class="clock"><strong>${name}</strong><div class="value">${value}</div><small>logical timestamp</small></div>`).join('');$('time').textContent=(step>=0?run.events[step].at:0).toFixed(1)+' s';$('step').value=step+1;$('rows').innerHTML=run.events.map((e,i)=>`<tr class="${i===step?'active':i>step?'future':''}"><td>${e.at.toFixed(1)} s</td><td>${e.node}</td><td>${e.type.toUpperCase()}: ${e.label}${e.message_id?' (#'+e.message_id+')':''}</td><td>${e.peer||'—'}</td><td>${e.clock}</td></tr>`).join('')}
+function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶ Play'}
+function play(){if(timer){stop();return}if(step>=run.events.length-1)step=-1;$('play').textContent='❚❚ Pause';timer=setInterval(()=>{if(step>=run.events.length-1){stop();return}step++;draw()},900)}
+$('case').addEventListener('change',setCase);$('step').addEventListener('input',()=>{stop();step=Number($('step').value)-1;draw()});$('restart').addEventListener('click',()=>{stop();step=-1;draw()});$('play').addEventListener('click',play);setCase();
+</script></body></html>

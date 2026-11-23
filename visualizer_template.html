@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Distributed Alert Network — Interactive Simulation</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#19344a;background:#eef3f8}
+    *{box-sizing:border-box}body{margin:0}header{background:#123b5d;color:white;padding:20px max(24px,calc((100vw - 1300px)/2));}
+    header h1{margin:0;font-size:24px}header p{margin:5px 0 0;color:#c6e2f6;font-size:13px}
+    main{max-width:1300px;margin:20px auto;padding:0 20px 30px}
+    .controls,.panel,.metric{background:white;border:1px solid #d9e2eb;border-radius:12px;box-shadow:0 3px 10px #233d5210}
+    .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:15px;margin-bottom:15px}
+    label{font-weight:650;font-size:12px;color:#476075;display:grid;gap:5px}
+    select,button,input{font:inherit}select{padding:9px 12px;border:1px solid #b6c7d5;border-radius:8px;background:white;min-width:180px}
+    button{background:#1769a6;color:white;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:650}
+    button.secondary{background:#e8eff6;color:#174a6a}button:hover{filter:brightness(1.07)}
+    #step{flex:1;min-width:180px;accent-color:#1769a6}#time{font-variant-numeric:tabular-nums;font-weight:700;color:#145d90;min-width:63px}
+    .metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:15px}
+    .metric{padding:13px}.metric span{display:block;font-size:12px;color:#637b8c}.metric strong{display:block;font-size:23px;margin-top:4px;color:#184d78}
+    .grid{display:grid;grid-template-columns:minmax(340px,1.15fr) minmax(330px,1fr);gap:15px}
+    .panel{padding:17px;min-width:0}.panel h2{font-size:17px;margin:0 0 10px}.panel p{font-size:12px;color:#64798b;margin:0 0 12px}
+    #network{width:100%;height:315px;display:block;background:#f8fbff;border:1px solid #e3edf5;border-radius:10px}
+    #cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+    .node-card{border:1px solid #d5e1e9;border-radius:9px;padding:9px;background:#f8fbfe;font-size:12px}
+    .node-card strong{font-size:13px}.node-card .ids{min-height:24px;overflow-wrap:anywhere;margin:5px 0;color:#25425d}
+    .node-card.offline{background:#fff3f0;border-color:#eab3a9}.node-card .tag{float:right;color:#42799c;font-size:11px}
+    #coverage{width:100%;height:155px;background:#f9fbfe;border-radius:8px;border:1px solid #e4ecf2}
+    #eventlog{max-height:240px;overflow:auto;font:12px ui-monospace,SFMono-Regular,Consolas,monospace;background:#f6f9fc;border:1px solid #e4ecf2;border-radius:8px;padding:10px}
+    .event{border-bottom:1px solid #e1e8ee;padding:5px 0}.event b{color:#195e93}.event.drop{color:#b34934}.event.partition,.event.offline,.event.restart{color:#a1462f}.event.heal,.event.online{color:#267a4a}
+    .legend{display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:#5b7181;margin-top:8px}.swatch{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+    footer{font-size:12px;color:#657d8f;margin:17px 0;text-align:center}
+    @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header><h1>Distributed Alert Network</h1><p>Interactive replay of Python gossip, message loss, partitions, joining, and recovery · All data generated locally</p></header>
+<main>
+  <div class="controls">
+    <label>Scenario<select id="scenario"></select></label>
+    <label>Highlight event<select id="event"><option value="all">All events</option></select></label>
+    <button id="play">▶ Play</button><button class="secondary" id="reset">↺ Reset</button>
+    <input id="step" type="range" min="0" max="100" value="0" aria-label="Simulation timeline">
+    <div id="time">0.0 s</div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><span>Final convergence</span><strong id="m-converged">—</strong></div>
+    <div class="metric"><span>Time after final alert</span><strong id="m-delay">—</strong></div>
+    <div class="metric"><span>Message attempts</span><strong id="m-msg">—</strong></div>
+    <div class="metric"><span>Dropped messages</span><strong id="m-drops">—</strong></div>
+    <div class="metric"><span>Retry batches</span><strong id="m-retry">—</strong></div>
+  </div>
+  <div class="grid">
+    <section class="panel"><h2>Network state at selected time</h2><p>Solid links deliver messages; dashed red links are partitioned. Gray/red nodes are offline.</p>
+      <svg id="network" viewBox="0 0 520 315" role="img" aria-label="Interactive node and link topology"></svg>
+      <div class="legend"><span><i class="swatch" style="background:#2d9968"></i>Selected alert known</span><span><i class="swatch" style="background:#317bb5"></i>Some alerts known</span><span><i class="swatch" style="background:#a5b2bb"></i>Not yet known</span><span><i class="swatch" style="background:#d97762"></i>Offline</span></div>
+      <div id="cards"></div>
+    </section>
+    <section class="panel"><h2>Event propagation</h2><p>How many online nodes know the highlighted alert? For “All events”, each node must know every alert injected so far.</p>
+      <svg id="coverage" viewBox="0 0 480 155" role="img" aria-label="Number of synchronized online nodes over simulated time"></svg>
+      <h2 style="margin-top:18px">Message and fault timeline</h2><p>Recent events around the current time; use the slider to inspect a partition or recovery.</p>
+      <div id="eventlog"></div>
+    </section>
+  </div>
+  <footer>Teaching simulator — not actual network processes or a Jepsen checker. Controlled random seed 42; seconds are simulated time.</footer>
+</main>
+<script>
+const DATA=__SIMULATION_DATA__;
+const $=id=>document.getElementById(id);
+let run=DATA.runs[0], index=0, timer=null;
+const scenario=$('scenario'), selected=$('event'), range=$('step');
+function option(text,value){const o=document.createElement('option');o.textContent=text;o.value=value;return o}
+for(let i=0;i<DATA.runs.length;i++)scenario.add(option(DATA.runs[i].name,i));
+function changeScenario(){pause();run=DATA.runs[Number(scenario.value)];index=0;selected.replaceChildren(option('All events','all'));for(const id of run.expected)selected.add(option('Alert '+id,id));range.max=run.timeline.length-1;setMetrics();draw()}
+function setMetrics(){const m=run.metrics;$('m-converged').textContent=m.converged?'Yes ✓':'No';$('m-delay').textContent=m.convergence_seconds===null?'—':m.convergence_seconds+' s';$('m-msg').textContent=m.messages_attempted;$('m-drops').textContent=m.messages_dropped;$('m-retry').textContent=m.retry_batches}
+function positions(){const names=run.nodes, p={};for(let i=0;i<names.length;i++){let a=-Math.PI/2+2*Math.PI*i/names.length;p[names[i]]={x:260+170*Math.cos(a),y:156+114*Math.sin(a)}}return p}
+function svgElem(tag,attrs,parent){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);parent.appendChild(e);return e}
+function hasSelected(node,at){if(selected.value==='all'){const injected=run.injections.filter(e=>e.at<=at+0.00001).map(e=>e.event);return injected.length>0&&injected.every(id=>node.known.includes(id))}return node.known.includes(Number(selected.value))}
+function drawNetwork(frame){const svg=$('network');svg.replaceChildren();const p=positions();const seen=new Set();for(const [node,peers] of Object.entries(run.topology))for(const peer of peers){const key=[node,peer].sort().join('|');if(seen.has(key))continue;seen.add(key);let blocked=frame.blocked.some(edge=>edge.join('|')===key);const line=svgElem('line',{x1:p[node].x,y1:p[node].y,x2:p[peer].x,y2:p[peer].y,stroke:blocked?'#d05f53':'#9eb6c5','stroke-width':blocked?3:2},svg);if(blocked)line.setAttribute('stroke-dasharray','7 5')}
+ for(const name of run.nodes){const state=frame.nodes[name],x=p[name].x,y=p[name].y;let color=!state.online?'#d97762':hasSelected(state,frame.at)?'#2d9968':state.known.length?'#317bb5':'#a5b2bb';svgElem('circle',{cx:x,cy:y,r:25,fill:color,stroke:'#fff','stroke-width':3},svg);const label=svgElem('text',{x,y:y+5,'text-anchor':'middle',fill:'#fff','font-size':15,'font-weight':700},svg);label.textContent=name;const cnt=svgElem('text',{x,y:y+40,'text-anchor':'middle',fill:'#405d73','font-size':11},svg);cnt.textContent=state.online?state.known.length+' alerts':'offline'}
+ $('cards').innerHTML=run.nodes.map(name=>{const n=frame.nodes[name];return `<div class="node-card ${n.online?'':'offline'}"><strong>${name}</strong><span class="tag">${n.online?'online':'offline'}</span><div class="ids">${n.known.join(', ')||'No alerts'}</div><small>Pending: ${Object.values(n.pending).reduce((s,ids)=>s+ids.length,0)} IDs</small></div>`}).join('')}
+function coverage(frame){const online=run.nodes.filter(n=>frame.nodes[n].online);return online.filter(n=>hasSelected(frame.nodes[n],frame.at)).length}
+function drawChart(){const svg=$('coverage');svg.replaceChildren();const n=run.timeline.length-1,max=run.nodes.length;for(let y=0;y<=max;y++){const py=133-y/max*112;svgElem('line',{x1:32,y1:py,x2:463,y2:py,stroke:'#e3ebf1'},svg);const t=svgElem('text',{x:23,y:py+4,'text-anchor':'end','font-size':10,fill:'#637b8a'},svg);t.textContent=y}
+ const points=run.timeline.map((f,i)=>`${32+i/n*431},${133-coverage(f)/max*112}`).join(' ');svgElem('polyline',{points,fill:'none',stroke:'#2d9968','stroke-width':2.6,'stroke-linecap':'round','stroke-linejoin':'round'},svg);
+ const x=32+index/n*431;svgElem('line',{x1:x,y1:16,x2:x,y2:138,stroke:'#e18946','stroke-width':2,'stroke-dasharray':'4 3'},svg);const txt=svgElem('text',{x:245,y:151,'text-anchor':'middle','font-size':10,fill:'#6b7d8a'},svg);txt.textContent='Simulated time →'}
+function drawLog(frame){const recent=run.trace.filter(e=>e.at<=frame.at+0.00001&&e.at>=frame.at-0.65).slice(-13);$('eventlog').innerHTML=recent.length?recent.map(e=>{const description=e.type==='inject'?`${e.node} detects ${e.ids.join(',')}`:e.type==='send'||e.type==='deliver'||e.type==='drop'?`${e.src} → ${e.dest}: ${e.kind} [${e.ids.join(', ')}]`:e.node||`${(e.group_a||[]).join(', ')} / ${(e.group_b||[]).join(', ')}`;return `<div class="event ${e.type}"><b>${e.at.toFixed(1)}s</b> · ${e.type.toUpperCase()} · ${description}</div>`}).join(''):'<div class="event">No events in this interval.</div>'}
+function draw(){const frame=run.timeline[index];range.value=index;$('time').textContent=frame.at.toFixed(1)+' s';drawNetwork(frame);drawChart();drawLog(frame)}
+function pause(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶ Play'}
+function play(){if(timer){pause();return}if(index>=run.timeline.length-1)index=0;$('play').textContent='❚❚ Pause';timer=setInterval(()=>{if(index>=run.timeline.length-1){pause();return}index++;draw()},90)}
+scenario.addEventListener('change',changeScenario);selected.addEventListener('change',draw);range.addEventListener('input',()=>{pause();index=Number(range.value);draw()});$('play').addEventListener('click',play);$('reset').addEventListener('click',()=>{pause();index=0;draw()});changeScenario();
+</script>
+</body></html>

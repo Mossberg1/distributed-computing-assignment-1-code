@@ -33,18 +33,26 @@ class GossipNode:
         5. Update counters['new_ids'] and counters['duplicates'].
         6. Return the set of newly discovered IDs.
         """
-        raise NotImplementedError("TODO B1: learn and deduplicate")
+        ids = set(event_ids)
+        new = ids - self.known
+        self.known |= new
+        for neighbor in self.neighbors:
+            self.pending[neighbor] |= new
+        self.counters["new_ids"] += len(new)
+        self.counters["duplicates"] += len(ids) - len(new)
+        return new
 
     def broadcast(self, event_id: int) -> dict:
         """TODO B1: call learn([event_id]); return an immediate local ACK.
 
         Expected: {'type': 'broadcast_ok', 'event_id': event_id}
         """
-        raise NotImplementedError("TODO B1: local broadcast")
+        self.learn([event_id])
+        return {"type": "broadcast_ok", "event_id": event_id}
 
     def read(self) -> list[int]:
         """TODO B1: return a sorted list from this node's known set."""
-        raise NotImplementedError("TODO B1: read local event set")
+        return sorted(self.known)
 
     def receive_gossip(self, sender: str, event_ids: list[int]) -> None:
         """TODO B2: learn received IDs and acknowledge the sender.
@@ -55,7 +63,12 @@ class GossipNode:
         Reply using self.send(sender, 'ack', {'ids': sorted(set(event_ids))}).
         Increment counters['gossip_received'].
         """
-        raise NotImplementedError("TODO B2: receive gossip")
+        ids = set(event_ids)
+        self.learn(ids)
+        self.pending[sender] -= ids
+        self.sent_unacked[sender] -= ids
+        self.send(sender, "ack", {"ids": sorted(ids)})
+        self.counters["gossip_received"] += 1
 
     def receive_ack(self, sender: str, event_ids: list[int]) -> None:
         """TODO C: stop retrying IDs acknowledged by this peer.

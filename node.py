@@ -75,9 +75,11 @@ class GossipNode:
 
         Remove event_ids from both self.pending[sender] and
         self.sent_unacked[sender]. Increment counters['acks_received'].
-        Until Part C is implemented, the incoming ACK may be ignored.
         """
-        return
+        ids = set(event_ids)
+        self.pending[sender] -= ids
+        self.sent_unacked[sender] -= ids
+        self.counters["acks_received"] += 1
 
     def tick(self, now: float) -> None:
         """Part B starter sends *new* gossip. TODO C adds retransmission.
@@ -93,11 +95,13 @@ class GossipNode:
                 self.last_sent[peer] = now
                 self.counters["gossip_sent"] += 1
                 continue
-            # TODO C: If self.pending[peer] is nonempty and retry_interval
-            # elapsed since last_sent[peer], resend up to batch_size IDs.
-            # Update last_sent and counters['retry_batches']. If the queue
-            # is empty or the timeout did not expire, do nothing.
-            pass
+            # Retry: nothing new to send, but unACKed IDs remain and the
+            # 0.5 s timeout has expired since the last send to this peer.
+            if self.pending[peer] and now - self.last_sent[peer] >= self.retry_interval:
+                retry = sorted(self.pending[peer])[:self.batch_size]
+                self.send(peer, "gossip", {"ids": retry})
+                self.last_sent[peer] = now
+                self.counters["retry_batches"] += 1
 
     def update_neighbors(self, new_neighbors: Iterable[str]) -> None:
         """Part B basic membership works. TODO E adds historical catch-up.
